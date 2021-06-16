@@ -1,0 +1,432 @@
+<html>
+
+<head>
+    <title>INFO 3330 Project 2</title>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.14.2/styles/default.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.14.2/highlight.min.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <style>
+    button {
+        display: inline-block;
+        height: 20px;
+        padding: 0 30px;
+        color: black;
+        font-family: 'Trebuchet MS';
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 20px;
+        letter-spacing: .1rem;
+        white-space: nowrap;
+        background-color: lightgrey;
+        border-radius: 4px;
+        border: 1px solid #bbb;
+        cursor: pointer;
+        box-sizing: border-box;
+    }
+
+    .gridlines {
+        stroke: lightgrey;
+        stroke-opacity: 0.7;
+    }
+
+    .nation {
+        fill: #ddd;
+    }
+
+    .outline {
+        stroke: #fff;
+        stroke-width: 1px;
+        fill: none;
+    }
+
+    body {
+        text-align: center;
+    }
+
+    text {
+        font-family: 'Trebuchet MS';
+    }
+    p{
+        font-family: 'Trebuchet MS'; 
+        margin: 10px
+    }
+
+    </style>
+</head>
+
+<body>
+    <h1 style="font-family: 'Trebuchet MS';">Median Income Based on Higher Education </h1>
+    <p ">How does the choice of where to go to college and what you study affect your future? Is there truly so much of a difference in future earnings between someone who attended a party school versus an Ivy League?
+        Use the filter buttons to explore how different choices in undergraduate studies affect future earnings.
+</p>
+    <h2 style="font-family: 'Trebuchet MS';">Map of Top 300 Colleges by Type</h2>
+    <p>Hover over colleges to learn specific details and use the filter buttons to refine the type of college being highlighted.</p>
+    <div style="border: 2px  solid lightcoral; border-radius: 25px; margin: 20px">
+        <h5 style="font-family: 'Trebuchet MS';" id="avg-start">Average Starting Salary For All Schools: $46,068</h5>
+        <h5 style="font-family: 'Trebuchet MS';" id="avg-mid">Average Mid-Career Salary For All Schools: $83,932</h5>
+    </div>
+     <svg id="map" height="610" width="975" style="background: #fff; margin-top:50px;">
+        <!-- <rect x="395" y ="0" width = "200" height = "40" style = "border: 1px solid lightcoral; background: white"></rect> -->
+        <text id="label" x="400" y="5" text-anchor="start" alignment-baseline="hanging"></text>
+        <text id="start" x="400" y="20" text-anchor="start" alignment-baseline="hanging"></text>
+        <text id="middle" x="400" y="35" text-anchor="start" alignment-baseline="hanging"></text>
+    </svg>
+    <div id="mapbuttons"></div>
+    <h2 style="font-family: 'Trebuchet MS'; text-align: center;">Median Salary Statistics By Undergraduate Major</h2>
+    <p>Below are shown the starting salaries of the 50 most common majors. Use the filter buttons to look at incomes at different career stages and hover over the bars to get major-specific salary statistics.</p>
+    <svg id="barchart" width="800" height="500"></svg>
+    <script>
+    // begin code for making the map
+    const mapsvg = d3.select("#map");
+    const mapwidth = mapsvg.attr("width");
+    const mapheight = mapsvg.attr("height");
+    const map = mapsvg.append("g");
+
+    const requestData = async function() {
+        const us = await d3.json("data/states-10m.json");
+        var projection = d3.geoAlbersUsa().scale(1300).translate([487.5, 305]);
+        var path = d3.geoPath().projection(projection);
+        var nation = topojson.feature(us, us.objects.nation);
+        //var states = topojson.feature(us, us.objects.states);
+        var statesMesh = topojson.mesh(us, us.objects.states);
+        map.selectAll("path.nation").data(nation.features)
+            .join("path")
+            .attr("class", "nation")
+            .attr("d", path);
+
+        map.append("path").datum(statesMesh)
+            .attr("class", "outline")
+            .attr("d", path);
+
+        var locs = await d3.csv("data/college_locations.csv", d3.autoType);
+
+        var types = await d3.csv("data/salaries-by-college-type.csv", d3.autoType);
+
+
+        //console.log(types[1]['School Name']);
+
+        const arrayColumn = (arr, n) => arr.map(x => x[n])
+
+        function get_salaries(name) {
+            var ind = arrayColumn(types, "School Name").indexOf(name);
+            if (ind != -1) {
+                return [types[ind]['Starting Median Salary'], types[ind]['Mid-Career Median Salary']];
+            } else {
+                return ["N/A", "N/A"];
+            }
+
+        }
+
+        function getSchoolType(name) {
+            var ind = arrayColumn(types, "School Name").indexOf(name);
+            if (ind != -1) {
+                return types[ind]['School Type'];
+            } else {
+                return "N/A";
+            }
+        }
+
+        locs.forEach((d, i) => {
+            d.position = projection([d.longitude, d.latitude]);
+        });
+
+        dots = map.selectAll("circle.dot").data(locs)
+            .join("circle")
+            .attr("class", "dot")
+            .attr("id", d => getSchoolType(d['name']))
+            .attr("r", 4)
+            .attr("opacity", .8)
+            .attr("fill", "lightcoral")
+            .attr("cx", d => d.position[0])
+            .attr("cy", d => d.position[1])
+            .on("mouseover", function() {
+                d3.select(this)
+                    .transition().duration(200)
+                    .attr("stroke", "black")
+                    .attr("r", 8)
+                    .attr("stroke-width", 2);
+                let title = "Name: " + d3.select(this).datum()['name']
+                d3.select("#label")
+                    .text(title);
+                var salaries = get_salaries(d3.select(this).datum()['name']);
+                d3.select("#start")
+                    .text("Starting Median Salary: " + salaries[0]);
+                d3.select("#middle")
+                    .text("Mid-Career Median Salary: " + salaries[1]);
+
+            })
+            .on("mouseout", function() {
+                d3.select(this)
+                    .transition().duration(200)
+                    .attr("stroke-width", 1)
+                    .attr("stroke", "none")
+                    .attr("r", 4)
+                d3.select("#label")
+                    .text("");
+                d3.select("#start")
+                    .text("");
+                d3.select("#middle")
+                    .text("");
+            });
+
+        const avgs = {
+            "All": ["$46,068", "$83,932"],
+            "Engineering": ["$59,058", "$103,842"],
+            "Party": ["$45,715", "$84,685"],
+            "Liberal Arts": ["$45,747", "$89,379"],
+            "Ivy League": ["$60,475", "$120,125"],
+            "State": ["$44,126", "$78,567"]
+        }
+
+        function filterSchools(d) {
+            if (d == "All") {
+                d3.select("#avg-start").text("Average Starting Salary For All Schools: " + avgs["All"][0]);
+                d3.select("#avg-mid").text("Average Mid-Career Salary For All Schools: " + avgs["All"][1]);
+
+                dots['_groups'][0].forEach(dot => {
+                    d3.select(dot).attr("opacity", 0.8)
+                        .on("mouseover", function() {
+                            d3.select(this)
+                                .transition().duration(200)
+                                .attr("stroke", "black")
+                                .attr("r", 8)
+                                .attr("stroke-width", 2);
+                            let title = "Name: " + d3.select(this).datum()['name']
+                            d3.select("#label")
+                                .text(title);
+                            var salaries = get_salaries(d3.select(this).datum()['name']);
+                            d3.select("#start")
+                                .text("Starting Median Salary: " + salaries[0]);
+                            d3.select("#middle")
+                                .text("Mid-Career Median Salary: " + salaries[1]);
+
+                        })
+                        .on("mouseout", function() {
+                            d3.select(this)
+                                .transition().duration(200)
+                                .attr("stroke-width", 1)
+                                .attr("stroke", "none")
+                                .attr("r", 4)
+                            d3.select("#label")
+                                .text("");
+                            d3.select("#start")
+                                .text("");
+                            d3.select("#middle")
+                                .text("");
+                        });
+                })
+            } else {
+                d3.select("#avg-start").text("Average Starting Salary For " + d + " Schools: " + avgs[d][0]);
+                d3.select("#avg-mid").text("Average Mid-Career Salary For " + d + " Schools: " + avgs[d][1]);
+                dots['_groups'][0].forEach(dot => {
+                    if (dot.id != d) {
+                        d3.select(dot).attr("opacity", 0)
+                            .on("mouseover", null);
+                    } else {
+                        d3.select(dot).raise()
+                            .attr("opacity", 0.8)
+                            .on("mouseover", function() {
+                                d3.select(this)
+                                    .transition().duration(200)
+                                    .attr("stroke", "black")
+                                    .attr("r", 8)
+                                    .attr("stroke-width", 2);
+                                let title = "Name: " + d3.select(this).datum()['name']
+                                d3.select("#label")
+                                    .text(title);
+                                var salaries = get_salaries(d3.select(this).datum()['name']);
+                                d3.select("#start")
+                                    .text("Starting Median Salary: " + salaries[0]);
+                                d3.select("#middle")
+                                    .text("Mid-Career Median Salary: " + salaries[1]);
+
+                            })
+                            .on("mouseout", function() {
+                                d3.select(this)
+                                    .transition().duration(200)
+                                    .attr("stroke-width", 1)
+                                    .attr("stroke", "none")
+                                    .attr("r", 4)
+                                d3.select("#label")
+                                    .text("");
+                                d3.select("#start")
+                                    .text("");
+                                d3.select("#middle")
+                                    .text("");
+                            });
+                    }
+
+                })
+            }
+        }
+
+        const schoolTypes = ["Engineering", "Party", "Liberal Arts", "Ivy League", "State", "All"];
+        schoolTypes.forEach(type => {
+            d3.select("#mapbuttons")
+                .append("button")
+                .attr("class", "schooltype")
+                .text(type)
+                .style("font-family", "Trebuchet MS")
+                .on("click", function() {
+                    filterSchools(type);
+                });
+        });
+    };
+    requestData();
+    // end code for making the map
+
+
+
+    // begin code for making the barchart
+    const svg = d3.select("svg#barchart");
+    const width = svg.attr("width");
+    const height = svg.attr("height");
+    const margin = { top: 10, right: 10, bottom: 185, left: 60 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+
+    let annotations = svg.append("g").attr("id", "annotations");
+    let chartArea = svg.append("g").attr("id", "points")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    /**
+     * Darked/Lighten a color
+     * Copied from https://stackoverflow.com/a/13532993/10468888
+     */
+    function shadeColor(color, percent) {
+
+        var R = parseInt(color.substring(1, 3), 16);
+        var G = parseInt(color.substring(3, 5), 16);
+        var B = parseInt(color.substring(5, 7), 16);
+
+        R = parseInt(R * (100 + percent) / 100);
+        G = parseInt(G * (100 + percent) / 100);
+        B = parseInt(B * (100 + percent) / 100);
+
+        R = (R < 255) ? R : 255;
+        G = (G < 255) ? G : 255;
+        B = (B < 255) ? B : 255;
+
+        var RR = ((R.toString(16).length == 1) ? "0" + R.toString(16) : R.toString(16));
+        var GG = ((G.toString(16).length == 1) ? "0" + G.toString(16) : G.toString(16));
+        var BB = ((B.toString(16).length == 1) ? "0" + B.toString(16) : B.toString(16));
+
+        return "#" + RR + GG + BB;
+    }
+
+    d3.csv("data/degrees-that-pay-back.csv", d3.autoType)
+        .then((salaryData) => {
+            console.log(salaryData);
+
+            const salaryScale = d3.scaleLinear().domain([0, 220000]).range([chartHeight, 0]);
+            let leftAxis = d3.axisLeft(salaryScale);
+            let leftGridlines = d3.axisLeft(salaryScale)
+                .tickSize(-chartWidth - 10)
+                .tickFormat("")
+            annotations.append("g")
+                .attr("class", "y axis")
+                .attr("transform", `translate(${margin.left - 10},${margin.top})`)
+                .call(leftAxis)
+            annotations.append("g")
+                .attr("class", "y gridlines")
+                .attr("opacity", 0.2)
+                .attr("transform", `translate(${margin.left - 10},${margin.top})`)
+                .call(leftGridlines);
+
+            const degrees = d3.map(salaryData, d => d['Undergraduate Major'])
+            const degreesScale = d3.scaleBand().domain(degrees).range([0, chartWidth])
+                .padding(0.05);
+
+            let bottomAxis = d3.axisBottom(degreesScale)
+
+            annotations.append("g")
+                .attr("class", "x axis")
+                .attr("transform", `translate(${margin.left},${chartHeight + margin.top + 10})`)
+                .call(bottomAxis)
+                .selectAll("text")
+                .style("font-size", "9px")
+                .style("text-anchor", "end")
+                .attr("dx", "-.8em")
+                .attr("dy", "-.72em")
+                .style("font-family", "Trebuchet MS")
+                .attr("transform", "rotate(-90)");
+
+            const tooltip = d3.select("body")
+                .append("div")
+                .attr("class", "d3-tooltip")
+                .style("position", "absolute")
+                .style("z-index", "10")
+                .style("visibility", "hidden")
+                .style("padding", "10px")
+                .style("background", "rgba(0,0,0,0.6)")
+                .style("border-radius", "5px")
+                .style("color", "#fff")
+                .style("font-family", "Trebuchet MS")
+                .text("salary data tooltips");
+
+            function updateBarsAnimated(salaryKey) {
+
+                const data = salaryData.map(function(d) {
+                    return {
+                        'Undergraduate Major': d['Undergraduate Major'],
+                        'Salary': Number(d[salaryKey].replace(",", "").replace("$", ""))
+                    }
+                });
+                console.log(data)
+
+                chartArea.selectAll('rect.bar').data(data, d => d['Undergraduate Major'])
+                    .join(enter => enter.append('rect')
+                        .attr('class', 'bar')
+                        .attr("fill", "lightcoral")
+                        .attr("x", d => degreesScale(d['Undergraduate Major']))
+                        .attr("y", d => salaryScale(d['Salary']))
+                        .attr("height", d => salaryScale(0) - salaryScale(d['Salary']))
+                        .attr("width", degreesScale.bandwidth())
+                        .attr("opacity", 0)
+                        .on("mouseover", function(d, i) {
+                            tooltip.html(`Salary: $${i['Salary'].toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`).style("visibility", "visible");
+                            d3.select(this)
+                                .attr("fill", shadeColor("#1a0000", -15));
+                        })
+                        .on("mousemove", function() {
+                            tooltip
+                                .style("top", (event.pageY - 10) + "px")
+                                .style("left", (event.pageX + 10) + "px");
+                        })
+                        .on("mouseout", function() {
+                            tooltip.html(``).style("visibility", "hidden");
+                            d3.select(this).attr("fill", "#f08080");
+                        })
+                        .call(enter => enter.transition().attr('opacity', 1)),
+                        update => update.call(update => update.transition()
+                            .attr("fill", "lightcoral")
+                            .attr("x", d => degreesScale(d['Undergraduate Major']))
+                            .attr("y", d => salaryScale(d['Salary']))
+                            .attr("height", d => salaryScale(0) - salaryScale(d['Salary']))
+                            .attr("width", degreesScale.bandwidth())),
+                        exit => exit.call(exit => exit.transition().attr('opacity', 0).remove()));
+            }
+
+            const elements = Object.keys(salaryData[0])
+                .filter(function(d) {
+                    return ((d != "Undergraduate Major") & (d != "Percent change from Starting to Mid-Career Salary"));
+                });
+            console.log(elements);
+            elements.forEach(d => {
+                d3.select("div#button-bar")
+                    .append("button")
+                    .text(d)
+                    .on("click", function() {
+                        updateBarsAnimated(d);
+                    })
+            });
+
+            updateBarsAnimated('Starting Median Salary');
+        });
+    // end code for making the barchart
+    </script>
+    <div id="button-bar"></div>
+</body>
+
+</html>
